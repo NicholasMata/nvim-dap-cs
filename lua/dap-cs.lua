@@ -6,7 +6,18 @@ local default_config = {
   },
 }
 
-local load_module = function(module_name)
+local load_optional_module = function(name)
+  local out; if xpcall(
+        function() out = require(name) end,
+        function(e) out = e end)
+  then
+    return out -- success
+  else
+    return nil, out
+  end -- error
+end
+
+local load_required_module = function(module_name)
   local ok, module = pcall(require, module_name)
   assert(ok, string.format("dap-cs dependency error: %s not installed", module_name))
   return module
@@ -134,7 +145,61 @@ local smart_pick_process = function(dap_utils, project_path)
   return processes[1].pid
 end
 
-local setup_configuration = function(dap, dap_utils, config)
+local pick_process_telescope = function(opts, on_success)
+  local pickers = require "telescope.pickers"
+  local finders = require "telescope.finders"
+  local conf = require("telescope.config").values
+  local actions = require "telescope.actions"
+  local action_state = require "telescope.actions.state"
+
+  local dap_utils = load_required_module("dap.utils")
+  local procs = dap_utils.get_processes()
+
+  opts = opts or {}
+
+  pickers.new(opts, {
+    prompt_title = "Pick a Process",
+    finder = finders.new_table {
+      results = procs,
+      entry_maker = function(entry)
+        return {
+          value = entry.pid,
+          display = entry.name,
+          ordinal = entry.name
+        }
+      end
+    },
+    sorter = conf.generic_sorter(opts),
+    attach_mappings = function(prompt_bufnr, map)
+      actions.select_default:replace(function()
+        actions.close(prompt_bufnr)
+        local selection = action_state.get_selected_entry()
+        on_success(selection.value)
+      end)
+      return true
+    end,
+  }):find()
+end
+
+local pick_process_dap_utils = function(on_success)
+  local dap_utils = load_required_module("dap.utils")
+  print("Starting pick_process")
+  vim.schedule(function()
+    local pid = dap_utils.pick_process()
+    on_success(pid)
+  end)
+end
+
+local pick_process = function(on_success)
+  local telescope, err = load_optional_module("telescope")
+  if not telescope then
+    pick_process_dap_utils(on_success)
+  else
+    pick_process_telescope({}, on_success)
+  end
+end
+
+local setup_configuration = function(dap, config)
   dap.configurations.cs = {
     {
       type = "coreclr",
@@ -149,14 +214,23 @@ local setup_configuration = function(dap, dap_utils, config)
       type = "coreclr",
       name = "Attach",
       request = "attach",
-      processId = dap_utils.pick_process,
+      -- processId = dap_utils.pick_process,
+      processId = function()
+        return coroutine.create(function(dap_run_co)
+          pick_process(function(process)
+            print("process selection")
+            print(vim.inspect(process))
+            coroutine.resume(dap_run_co, process or dap.ABORT)
+          end)
+        end)
+      end
     },
-
     {
       type = "coreclr",
       name = "Attach (Smart)",
       request = "attach",
       processId = function()
+        local dap_utils = load_required_module("dap.utils")
         local current_working_dir = vim.fn.getcwd()
         return smart_pick_process(dap_utils, current_working_dir) or dap.ABORT
       end,
@@ -185,10 +259,9 @@ end
 
 function M.setup(opts)
   local config = vim.tbl_deep_extend("force", default_config, opts or {})
-  local dap = load_module("dap")
-  local dap_utils = load_module("dap.utils")
+  local dap = load_required_module("dap")
   setup_adapter(dap, config)
-  setup_configuration(dap, dap_utils, config)
+  setup_configuration(dap, config)
 end
 
 return M
