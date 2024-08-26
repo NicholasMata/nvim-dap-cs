@@ -1,102 +1,102 @@
 local M = {}
 
 local default_config = {
-  netcoredbg = {
-    path = "netcoredbg",
-  },
+	netcoredbg = {
+		path = "netcoredbg",
+	},
 }
 
 local load_optional_module = function(name)
-  local out; if xpcall(
-        function() out = require(name) end,
-        function(e) out = e end)
-  then
-    return out -- success
-  else
-    return nil, out
-  end -- error
+	local out
+	if xpcall(function()
+		out = require(name)
+	end, function(e)
+		out = e
+	end) then
+		return out -- success
+	else
+		return nil, out
+	end -- error
 end
 
 local load_required_module = function(module_name)
-  local ok, module = pcall(require, module_name)
-  assert(ok, string.format("dap-cs dependency error: %s not installed", module_name))
-  return module
+	local ok, module = pcall(require, module_name)
+	assert(ok, string.format("dap-cs dependency error: %s not installed", module_name))
+	return module
 end
 
 local number_indices = function(array)
-  local result = {}
-  for i, value in ipairs(array) do
-    result[i] = i .. ": " .. value
-  end
-  return result
+	local result = {}
+	for i, value in ipairs(array) do
+		result[i] = i .. ": " .. value
+	end
+	return result
 end
 
 local display_options = function(prompt_title, options)
-  options = number_indices(options)
-  table.insert(options, 1, prompt_title)
+	options = number_indices(options)
+	table.insert(options, 1, prompt_title)
 
-  local choice = vim.fn.inputlist(options)
+	local choice = vim.fn.inputlist(options)
 
-  if choice > 0 then
-    return options[choice + 1]
-  else
-    return nil
-  end
+	if choice > 0 then
+		return options[choice + 1]
+	else
+		return nil
+	end
 end
 
-
 local file_selection = function(cmd, opts)
-  local results = vim.fn.systemlist(cmd)
+	local results = vim.fn.systemlist(cmd)
 
-  if #results == 0 then
-    print(opts.empty_message)
-    return
-  end
+	if #results == 0 then
+		print(opts.empty_message)
+		return
+	end
 
-  if opts.allow_multiple then
-    return results
-  end
+	if opts.allow_multiple then
+		return results
+	end
 
-  local result = results[1]
-  if #results > 1 then
-    result = display_options(opts.multiple_title_message, results)
-  end
+	local result = results[1]
+	if #results > 1 then
+		result = display_options(opts.multiple_title_message, results)
+	end
 
-  return result
+	return result
 end
 
 local project_selection = function(project_path, allow_multiple)
-  local check_csproj_cmd = string.format('find %s -type f -name "*.csproj"', project_path)
-  local project_file = file_selection(check_csproj_cmd, {
-    empty_message = 'No csproj files found in ' .. project_path,
-    multiple_title_message = 'Select project:',
-    allow_multiple = allow_multiple
-  })
-  return project_file
+	local check_csproj_cmd = string.format('find %s -type f -name "*.csproj"', project_path)
+	local project_file = file_selection(check_csproj_cmd, {
+		empty_message = "No csproj files found in " .. project_path,
+		multiple_title_message = "Select project:",
+		allow_multiple = allow_multiple,
+	})
+	return project_file
 end
 
 local select_dll = function(project_path)
-  local bin_path = project_path .. '/bin'
+	local bin_path = project_path .. "/bin"
 
-  local check_net_folders_cmd = string.format('find %s -type d -name "net*"', bin_path)
-  local net_bin = file_selection(check_net_folders_cmd, {
-    empty_message = 'No dotnet directories found in the "bin" directory. Ensure project has been built.',
-    multiple_title_message = "Select NET Version:"
-  })
-  if net_bin == nil then
-    return
-  end
+	local check_net_folders_cmd = string.format('find %s -type d -name "net*"', bin_path)
+	local net_bin = file_selection(check_net_folders_cmd, {
+		empty_message = 'No dotnet directories found in the "bin" directory. Ensure project has been built.',
+		multiple_title_message = "Select NET Version:",
+	})
+	if net_bin == nil then
+		return
+	end
 
-  local project_file = project_selection(project_path)
-  if project_file == nil then
-    return
-  end
-  local project_name = vim.fn.fnamemodify(project_file, ":t:r")
+	local project_file = project_selection(project_path)
+	if project_file == nil then
+		return
+	end
+	local project_name = vim.fn.fnamemodify(project_file, ":t:r")
 
-  local dll_path = net_bin .. '/' .. project_name .. '.dll'
-  return dll_path
+	local dll_path = net_bin .. "/" .. project_name .. ".dll"
+	return dll_path
 end
-
 
 --- Attempts to pick a process smartly.
 ---
@@ -108,160 +108,161 @@ end
 --- 2c. If no project files found then will filter for processes starting with "dotnet"
 --- 3. If a single process matches then auto selects it. If multiple found then displays it user for selection.
 local smart_pick_process = function(dap_utils, project_path)
-  local project_file = project_selection(project_path, true)
-  if project_file == nil then
-    return
-  end
+	local project_file = project_selection(project_path, true)
+	if project_file == nil then
+		return
+	end
 
-  local filter = function(proc)
-    if type(project_file) == "table" then
-      for _, file in pairs(project_file) do
-        local project_name = vim.fn.fnamemodify(file, ":t:r")
-        if vim.endswith(proc.name, project_name) then
-          return true
-        end
-      end
-      return false
-    elseif type(project_file) == "string" then
-      local project_name = vim.fn.fnamemodify(project_file, ":t:r")
-      return vim.startswith(proc.name, project_name or "dotnet")
-    end
-  end
+	local filter = function(proc)
+		if type(project_file) == "table" then
+			for _, file in pairs(project_file) do
+				local project_name = vim.fn.fnamemodify(file, ":t:r")
+				if vim.endswith(proc.name, project_name) then
+					return true
+				end
+			end
+			return false
+		elseif type(project_file) == "string" then
+			local project_name = vim.fn.fnamemodify(project_file, ":t:r")
+			return vim.startswith(proc.name, project_name or "dotnet")
+		end
+	end
 
-  local processes = dap_utils.get_processes()
-  processes = vim.tbl_filter(filter, processes)
+	local processes = dap_utils.get_processes()
+	processes = vim.tbl_filter(filter, processes)
 
-  if #processes == 0 then
-    print("No dotnet processes could be found automatically. Try 'Attach' instead")
-    return
-  end
+	if #processes == 0 then
+		print("No dotnet processes could be found automatically. Try 'Attach' instead")
+		return
+	end
 
-  if #processes > 1 then
-    return dap_utils.pick_process({
-      filter = filter
-    })
-  end
+	if #processes > 1 then
+		return dap_utils.pick_process({
+			filter = filter,
+		})
+	end
 
-  return processes[1].pid
+	return processes[1].pid
 end
 
 local pick_process_telescope = function(opts, on_success)
-  local pickers = require "telescope.pickers"
-  local finders = require "telescope.finders"
-  local conf = require("telescope.config").values
-  local actions = require "telescope.actions"
-  local action_state = require "telescope.actions.state"
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
 
-  local dap_utils = load_required_module("dap.utils")
-  local procs = dap_utils.get_processes()
+	local dap_utils = load_required_module("dap.utils")
+	local procs = dap_utils.get_processes()
 
-  opts = opts or {}
+	opts = opts or {}
 
-  pickers.new(opts, {
-    prompt_title = "Pick a Process",
-    finder = finders.new_table {
-      results = procs,
-      entry_maker = function(entry)
-        return {
-          value = entry.pid,
-          display = entry.name,
-          ordinal = entry.name
-        }
-      end
-    },
-    sorter = conf.generic_sorter(opts),
-    attach_mappings = function(prompt_bufnr, map)
-      actions.select_default:replace(function()
-        actions.close(prompt_bufnr)
-        local selection = action_state.get_selected_entry()
-        on_success(selection.value)
-      end)
-      return true
-    end,
-  }):find()
+	pickers
+		.new(opts, {
+			prompt_title = "Pick a Process",
+			finder = finders.new_table({
+				results = procs,
+				entry_maker = function(entry)
+					return {
+						value = entry.pid,
+						display = entry.name,
+						ordinal = entry.name,
+					}
+				end,
+			}),
+			sorter = conf.generic_sorter(opts),
+			attach_mappings = function(prompt_bufnr, map)
+				actions.select_default:replace(function()
+					actions.close(prompt_bufnr)
+					local selection = action_state.get_selected_entry()
+					on_success(selection.value)
+				end)
+				return true
+			end,
+		})
+		:find()
 end
 
 local pick_process_dap_utils = function(on_success)
-  local dap_utils = load_required_module("dap.utils")
-  print("Starting pick_process")
-  vim.schedule(function()
-    local pid = dap_utils.pick_process()
-    on_success(pid)
-  end)
+	local dap_utils = load_required_module("dap.utils")
+	print("Starting pick_process")
+	vim.schedule(function()
+		local pid = dap_utils.pick_process()
+		on_success(pid)
+	end)
 end
 
 local pick_process = function(on_success)
-  local telescope, err = load_optional_module("telescope")
-  if not telescope then
-    pick_process_dap_utils(on_success)
-  else
-    pick_process_telescope({}, on_success)
-  end
+	local telescope, err = load_optional_module("telescope")
+	if not telescope then
+		pick_process_dap_utils(on_success)
+	else
+		pick_process_telescope({}, on_success)
+	end
 end
 
 local setup_configuration = function(dap, config)
-  dap.configurations.cs = {
-    {
-      type = "coreclr",
-      name = "Launch",
-      request = "launch",
-      program = function()
-        local current_working_dir = vim.fn.getcwd()
-        return select_dll(current_working_dir) or dap.ABORT
-      end,
-    },
-    {
-      type = "coreclr",
-      name = "Attach",
-      request = "attach",
-      -- processId = dap_utils.pick_process,
-      processId = function()
-        return coroutine.create(function(dap_run_co)
-          pick_process(function(process)
-            print("process selection")
-            print(vim.inspect(process))
-            coroutine.resume(dap_run_co, process or dap.ABORT)
-          end)
-        end)
-      end
-    },
-    {
-      type = "coreclr",
-      name = "Attach (Smart)",
-      request = "attach",
-      processId = function()
-        local dap_utils = load_required_module("dap.utils")
-        local current_working_dir = vim.fn.getcwd()
-        return smart_pick_process(dap_utils, current_working_dir) or dap.ABORT
-      end,
-    },
-  }
+	dap.configurations.cs = {
+		{
+			type = "coreclr",
+			name = "Launch",
+			request = "launch",
+			program = function()
+				local current_working_dir = vim.fn.getcwd()
+				return select_dll(current_working_dir) or dap.ABORT
+			end,
+		},
+		{
+			type = "coreclr",
+			name = "Attach",
+			request = "attach",
+			-- processId = dap_utils.pick_process,
+			processId = function()
+				return coroutine.create(function(dap_run_co)
+					pick_process(function(process)
+						print("process selection")
+						print(vim.inspect(process))
+						coroutine.resume(dap_run_co, process or dap.ABORT)
+					end)
+				end)
+			end,
+		},
+		{
+			type = "coreclr",
+			name = "Attach (Smart)",
+			request = "attach",
+			processId = function()
+				local dap_utils = load_required_module("dap.utils")
+				local current_working_dir = vim.fn.getcwd()
+				return smart_pick_process(dap_utils, current_working_dir) or dap.ABORT
+			end,
+		},
+	}
 
+	if config == nil or config.dap_configurations == nil then
+		return
+	end
 
-  if config == nil or config.dap_configurations == nil then
-    return
-  end
-
-  for _, dap_config in ipairs(config.dap_configurations) do
-    if dap_config.type == "coreclr" then
-      table.insert(dap.configurations.cs, config)
-    end
-  end
+	for _, dap_config in ipairs(config.dap_configurations) do
+		if dap_config.type == "coreclr" then
+			table.insert(dap.configurations.cs, config)
+		end
+	end
 end
 
 local setup_adapter = function(dap, config)
-  dap.adapters.coreclr = {
-    type = 'executable',
-    command = config.netcoredbg.path,
-    args = { '--interpreter=vscode' }
-  }
+	dap.adapters.coreclr = {
+		type = "executable",
+		command = config.netcoredbg.path,
+		args = { "--interpreter=vscode" },
+	}
 end
 
 function M.setup(opts)
-  local config = vim.tbl_deep_extend("force", default_config, opts or {})
-  local dap = load_required_module("dap")
-  setup_adapter(dap, config)
-  setup_configuration(dap, config)
+	local config = vim.tbl_deep_extend("force", default_config, opts or {})
+	local dap = load_required_module("dap")
+	setup_adapter(dap, config)
+	setup_configuration(dap, config)
 end
 
 return M
