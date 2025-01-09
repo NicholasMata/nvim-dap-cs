@@ -6,6 +6,31 @@ local default_config = {
   },
 }
 
+local command_templates = {
+  find_csproj = 'find %s -type f -name "*.csproj"',
+  find_dotnet_versions = 'find %s -type d -name "net*"',
+}
+if vim.o.shell == 'cmd.exe' then
+  command_templates = {
+    find_csproj = 'where /r %s *.csproj',
+    find_dotnet_versions = 'pushd . & cd %s & dir net* /S /B & popd'
+  }
+elseif vim.fn.fnamemodify(vim.o.shell, ":r:t") == 'pwsh' then
+  -- Using cmd instead of native powershell commands as they are much faster
+  command_templates = {
+    find_csproj = 'cmd /C "where /r %s *.csproj"',
+
+    find_dotnet_versions = 'cmd /C "pushd . & cd %s & dir net* /S /B & popd"'
+  }
+end
+
+local path_delimiter
+if vim.api.nvim_call_function('has', { 'win32' }) == 1 then
+  path_delimiter = "\\"
+else
+  path_delimiter = "/"
+end
+
 local load_module = function(module_name)
   local ok, module = pcall(require, module_name)
   assert(ok, string.format("dap-cs dependency error: %s not installed", module_name))
@@ -21,27 +46,33 @@ local number_indices = function(array)
 end
 
 local display_options = function(prompt_title, options)
-  options = number_indices(options)
-  table.insert(options, 1, prompt_title)
+  local displayOptions = number_indices(options)
+  table.insert(displayOptions, 1, prompt_title)
 
-  local choice = vim.fn.inputlist(options)
+  local choice = vim.fn.inputlist(displayOptions)
 
   if choice > 0 then
-    return options[choice + 1]
+    return options[choice]
   else
     return nil
   end
 end
 
+local is_not_empty = function(value)
+  return value ~= nil and string.len(value) > 1
+end
+
+local function trim(s)
+  return s:gsub("^%s*(.-)%s*$", "%1")
+end
 
 local file_selection = function(cmd, opts)
-  local results = vim.fn.systemlist(cmd)
-
+  local results = vim.tbl_filter(is_not_empty, vim.fn.systemlist(cmd))
   if #results == 0 then
     print(opts.empty_message)
     return
   end
-
+  results = vim.tbl_map(trim, results)
   if opts.allow_multiple then
     return results
   end
@@ -55,7 +86,7 @@ local file_selection = function(cmd, opts)
 end
 
 local project_selection = function(project_path, allow_multiple)
-  local check_csproj_cmd = string.format('find %s -type f -name "*.csproj"', project_path)
+  local check_csproj_cmd = string.format(command_templates.find_csproj, project_path)
   local project_file = file_selection(check_csproj_cmd, {
     empty_message = 'No csproj files found in ' .. project_path,
     multiple_title_message = 'Select project:',
@@ -65,24 +96,23 @@ local project_selection = function(project_path, allow_multiple)
 end
 
 local select_dll = function(project_path)
-  local bin_path = project_path .. '/bin'
-
-  local check_net_folders_cmd = string.format('find %s -type d -name "net*"', bin_path)
-  local net_bin = file_selection(check_net_folders_cmd, {
-    empty_message = 'No dotnet directories found in the "bin" directory. Ensure project has been built.',
-    multiple_title_message = "Select NET Version:"
-  })
-  if net_bin == nil then
-    return
-  end
-
   local project_file = project_selection(project_path)
   if project_file == nil then
     return
   end
   local project_name = vim.fn.fnamemodify(project_file, ":t:r")
+  local project_folder = vim.fn.fnamemodify(project_file, ":p:h")
 
-  local dll_path = net_bin .. '/' .. project_name .. '.dll'
+  local bin_path = project_folder .. path_delimiter .. 'bin'
+  local check_net_folders_cmd = string.format(command_templates.find_dotnet_versions, bin_path)
+  local dll_folder = file_selection(check_net_folders_cmd, {
+    empty_message = 'No dotnet directories found in the "bin" directory. Ensure project has been built.',
+    multiple_title_message = "Select NET Version:"
+  })
+  if dll_folder == nil then
+    return
+  end
+  local dll_path = dll_folder .. path_delimiter .. project_name .. '.dll'
   return dll_path
 end
 
@@ -106,7 +136,7 @@ local smart_pick_process = function(dap_utils, project_path)
     if type(project_file) == "table" then
       for _, file in pairs(project_file) do
         local project_name = vim.fn.fnamemodify(file, ":t:r")
-        if vim.endswith(proc.name, project_name) then
+        if vim.startswith(proc.name, project_name) then
           return true
         end
       end
@@ -151,7 +181,6 @@ local setup_configuration = function(dap, dap_utils, config)
       request = "attach",
       processId = dap_utils.pick_process,
     },
-
     {
       type = "coreclr",
       name = "Attach (Smart)",
