@@ -36,12 +36,6 @@ local load_module = function(module_name)
   return module
 end
 
-local display_options = function(dap_ui, prompt_title, options)
-  local choice = dap_ui.pick_if_many(options, prompt_title)
-
-  return choice
-end
-
 local is_not_empty = function(value)
   return value ~= nil and string.len(value) > 1
 end
@@ -63,7 +57,7 @@ local file_selection = function(dap_ui, cmd, opts)
 
   local result = results[1]
   if #results > 1 then
-    result = display_options(dap_ui, opts.multiple_title_message, results)
+    result = dap_ui.pick_if_many(opts.multiple_title_message, results)
   end
 
   return result
