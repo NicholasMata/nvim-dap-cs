@@ -40,7 +40,7 @@ It is possible to customize nvim-dap-cs by passing a config table in the setup f
 The example below shows all the possible configurations:
 
 ```lua
-require('dap-cs').setup(
+require('dap-cs').setup({
   -- Additional dap configurations can be added.
   -- dap_configurations accepts a list of tables where each entry
   -- represents a dap configuration. For more details do:
