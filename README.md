@@ -2,14 +2,12 @@
 
 An extension for [nvim-dap][1] providing adapter and configurations for launching .NET Core debugger ([netcoredbg][2]).
 
-
 ![Configuration Selection Screenshot](./images/configuration_selection.png "Configuration Selection Screenshot")
 
 ## Features
 
 - Launch a .NET Core project
 - Attach to a .NET Core process
-- Smart attach to a .NET Core process
 
 ### Requirements
 
@@ -18,6 +16,7 @@ An extension for [nvim-dap][1] providing adapter and configurations for launchin
 - [netcoredbg][2] - .NET Core debugger
 
 ### Installation
+
 - Install like any other neovim plugin:
   - If using [vim-plug][4]: `Plug 'nicholasmata/nvim-dap-cs'`
   - If using [packer.nvim][5]: `use 'nicholasmata/nvim-dap-cs'`
@@ -57,7 +56,7 @@ require('dap-cs').setup(
   netcoredbg = {
     -- the path to the executable netcoredbg which will be used for debugging.
     -- by default, this is the "netcoredbg" executable on your PATH.
-    path = "netcoredbg" 
+    path = "netcoredbg"
   }
 )
 ```
