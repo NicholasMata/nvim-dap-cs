@@ -48,7 +48,8 @@ local file_selection = function(cmd, opts)
 
   local result = results[1]
   if #results > 1 then
-    result = display_options(opts.multiple_title_message, results)
+    result = string.sub(display_options(opts.multiple_title_message, results), 4, -1)
+
   end
 
   return result
